@@ -25,10 +25,13 @@ class DeviceListener:
 
     # Ensures that we have a valid auth token
     async def refresh_auth_loop(self):
-        while True:
+        while not self.cancelled:
             await asyncio.sleep(60 * 60 * 24)  # Refresh every 24 hours
             try:
                 await self.lounge_controller.refresh_auth()
+            except (asyncio.CancelledError, KeyboardInterrupt) as e:
+                print(e)
+                return
             except BaseException:
                 pass
 
@@ -46,8 +49,8 @@ class DeviceListener:
                 try:
                     self.logger.debug("Refreshing auth")
                     await lounge_controller.refresh_auth()
-                except (asyncio.CancelledError, KeyboardInterrupt):
-                    raise
+                except (asyncio.CancelledError, KeyboardInterrupt) as e:
+                    print(e)
                 except BaseException:
                     await asyncio.sleep(10)
             while not (await self.is_available()) and not self.cancelled:
@@ -55,8 +58,8 @@ class DeviceListener:
                 await asyncio.sleep(10)
             try:
                 await lounge_controller.connect()
-            except (asyncio.CancelledError, KeyboardInterrupt):
-                raise
+            except (asyncio.CancelledError, KeyboardInterrupt) as e:
+                print(e)
             except BaseException:
                 pass
             while not lounge_controller.connected() and not self.cancelled:
@@ -65,8 +68,8 @@ class DeviceListener:
                 await asyncio.sleep(10)
                 try:
                     await lounge_controller.connect()
-                except (asyncio.CancelledError, KeyboardInterrupt):
-                    raise
+                except (asyncio.CancelledError, KeyboardInterrupt) as e:
+                    print(e)
                 except BaseException:
                     pass
             self.logger.info(
@@ -77,7 +80,7 @@ class DeviceListener:
                 sub = await lounge_controller.subscribe_monitored(self)
                 await sub
             except (asyncio.CancelledError, KeyboardInterrupt):
-                raise
+                return
             except BaseException:
                 pass
 
@@ -86,6 +89,8 @@ class DeviceListener:
         time_start = time.monotonic()
         try:
             self.task.cancel()
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            return
         except BaseException:
             pass
         self.task = asyncio.create_task(self.process_playstatus(state, time_start))
@@ -158,8 +163,12 @@ async def finish(devices, web_session, tcp_connector):
     await tcp_connector.close()
 
 
-def handle_signal(signum, frame):
-    raise KeyboardInterrupt()
+async def shutdown(_signal, loop):
+    """Cleanup tasks tied to the service's shutdown."""
+    tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    [task.cancel() for task in tasks]
+    await asyncio.gather(*tasks)
+    loop.stop()
 
 
 async def main_async(config, debug, http_tracing):
@@ -193,8 +202,10 @@ async def main_async(config, debug, http_tracing):
         await device.initialize_web_session()
         tasks.append(loop.create_task(device.loop()))
         tasks.append(loop.create_task(device.refresh_auth_loop()))
-    signal(SIGTERM, handle_signal)
-    signal(SIGINT, handle_signal)
+    signals = (SIGTERM, SIGINT)
+    for s in signals:
+        loop.add_signal_handler(s, lambda s=s: asyncio.create_task(shutdown(s, loop)))
+
     try:
         await asyncio.gather(*tasks)
     except KeyboardInterrupt:
