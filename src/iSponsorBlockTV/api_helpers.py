@@ -77,7 +77,7 @@ class ApiHelper:
                 return None
             try:
                 pair_response = await response.json()
-            except BaseException:
+            except Exception:
                 return None
 
         screen = pair_response.get("screen")
@@ -255,7 +255,7 @@ class ApiHelper:
                 # Only add segments greater than minimum skip length
                 if segment_dict["end"] - segment_dict["start"] > minimum_skip_length:
                     segments.append(segment_dict)
-        except BaseException:
+        except (KeyError, TypeError, ValueError, IndexError):
             pass
         return segments, ignore_ttl
 

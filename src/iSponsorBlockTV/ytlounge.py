@@ -121,7 +121,7 @@ class YtLoungeApi(pyytlounge.YtLoungeApi):
         except asyncio.CancelledError:
             self.logger.debug("Watchdog task cancelled")
             self.watchdog_running = False
-        except BaseException as e:
+        except Exception as e:
             self.logger.error(f"Watchdog error: {e}")
             self.watchdog_running = False
 

@@ -624,7 +624,7 @@ class AddChannel(ModalWithClickExit):
         self.query_one("#channel-search-results").remove_children()
         try:
             channels_list = await self.api_helper.search_channels(channel_name)
-        except BaseException:
+        except Exception:
             self.query_one("#add-channel-info").update("[#ff0000]Failed to search for channel")
             self.query_one("#search-channel-button").disabled = False
             return
